@@ -7811,7 +7811,7 @@ document.head.appendChild(swipeStyle);
 </script>
 
 <script>
-// Глобальная переменная для отслеживания состояния
+// Глобальная переменная для отслеживания разрешения закрытия
 let isClosingAllowed = true;
 
 // Основная функция управления закрытием
@@ -7825,49 +7825,53 @@ function manageAppClosing() {
         // На главной - разрешаем закрытие
         Telegram.WebApp.enableClosingConfirmation();
         isClosingAllowed = true;
+        
+        // Официальный метод для разрешения свайпа
+        if (typeof Telegram.WebApp.setHeaderColor === 'function') {
+            Telegram.WebApp.setHeaderColor('#000000'); // Стандартный цвет
+        }
+        
     } else {
         // На всех других страницах - запрещаем закрытие
         Telegram.WebApp.disableClosingConfirmation();
         isClosingAllowed = false;
         
-        // Блокируем любые свайпы вниз
-        blockPullToCloseGestures();
+        // Официальный метод - скрываем хедер полностью
+        if (typeof Telegram.WebApp.setHeaderColor === 'function') {
+            Telegram.WebApp.setHeaderColor('#00000000'); // Прозрачный цвет
+        }
+        
+        // Дополнительно используем expand() чтобы занять весь экран
+        Telegram.WebApp.expand();
     }
 }
 
-// Агрессивное блокирование свайпов вниз
-function blockPullToCloseGestures() {
-    let startY = 0;
-    let isBlocking = false;
-    
-    // Перехватываем все touch события
-    document.addEventListener('touchstart', function(e) {
-        if (!isClosingAllowed) {
-            startY = e.touches[0].clientY;
-            isBlocking = startY < 100; // Блокируем только свайпы из верхней части
-        }
-    }, { passive: true });
-    
-    document.addEventListener('touchmove', function(e) {
-        if (!isClosingAllowed && isBlocking && e.cancelable) {
-            // Полностью блокируем вертикальные движения при запрете закрытия
-            e.preventDefault();
-        }
-    }, { passive: false });
-    
-    document.addEventListener('touchend', function() {
-        isBlocking = false;
-    }, { passive: true });
+// Функция для принудительного расширения на весь экран
+function forceExpand() {
+    if (window.Telegram?.WebApp?.expand) {
+        Telegram.WebApp.expand();
+        
+        // Повторяем расширение несколько раз для надежности
+        setTimeout(() => Telegram.WebApp.expand(), 100);
+        setTimeout(() => Telegram.WebApp.expand(), 300);
+    }
 }
 
-// Обновляем при каждом изменении страницы
+// Обновляем состояние при каждом изменении
 function updateClosingState() {
-    setTimeout(manageAppClosing, 50);
+    setTimeout(() => {
+        manageAppClosing();
+        if (!isClosingAllowed) {
+            forceExpand();
+        }
+    }, 50);
 }
 
 // Инициализация
 document.addEventListener('DOMContentLoaded', function() {
-    // Наблюдаем за всеми страницами
+    if (!window.Telegram?.WebApp) return;
+    
+    // Наблюдаем за изменениями страниц
     const observer = new MutationObserver(updateClosingState);
     const pages = ['main-page', 'cabinet-page', 'treasure-page', 'storage-page', 
                   'payment-page', 'expenses-page', 'profile-page', 'reviews-page'];
@@ -7882,11 +7886,13 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
     
-    // Перехватываем навигационные функции
-    const navFunctions = ['showPage', 'hidePaymentPage', 'hideExpensesPage', 
-                         'hideProfilePage', 'hideReviewsPage'];
+    // Перехватываем все функции навигации
+    const navigationFunctions = [
+        'showPage', 'hidePaymentPage', 'hideExpensesPage', 
+        'hideProfilePage', 'hideReviewsPage', 'handleBackButton'
+    ];
     
-    navFunctions.forEach(funcName => {
+    navigationFunctions.forEach(funcName => {
         if (window[funcName]) {
             const originalFunc = window[funcName];
             window[funcName] = function() {
@@ -7897,18 +7903,35 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     });
     
+    // Также обновляем при изменении размера окна
+    window.addEventListener('resize', updateClosingState);
+    
     // Первоначальная настройка
     manageAppClosing();
+    forceExpand();
+    
+    // Периодически проверяем состояние
+    setInterval(updateClosingState, 1000);
 });
 
-// Дополнительная защита - переопределяем BackButton если нужно
+// Дополнительная защита - перехватываем touch события
+document.addEventListener('touchstart', function(e) {
+    if (!isClosingAllowed && e.touches[0].clientY < 50) {
+        // Блокируем свайпы из самой верхней части экрана
+        e.stopPropagation();
+    }
+}, { passive: true });
+
+// Обработчик для кнопки Назад в Telegram
 if (window.Telegram?.WebApp?.BackButton) {
     Telegram.WebApp.BackButton.onClick(function() {
         if (!isClosingAllowed) {
-            // На страницах где закрытие запрещено - обрабатываем навигацию
-            handleBackButton();
+            // На запрещенных страницах - навигация назад
+            if (typeof handleBackButton === 'function') {
+                handleBackButton();
+            }
         } else {
-            // На главной - закрываем приложение
+            // На главной - закрытие
             Telegram.WebApp.close();
         }
     });
