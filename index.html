@@ -7813,106 +7813,72 @@ document.head.appendChild(swipeStyle);
 <script>
 // Полная блокировка свайпа для закрытия на ВСЕХ страницах
 (function() {
-    // Конфигурация
-    const BLOCKING_ENABLED = true; // Включить блокировку для всех страниц
-    const TOUCH_AREA_HEIGHT = 100; // Область вверху где блокируем касания
+    if (!window.Telegram?.WebApp) return;
     
-    let touchStartY = 0;
-    let isInTouchArea = false;
+    // 1. Официальный метод Telegram - отключаем подтверждение закрытия
+    Telegram.WebApp.disableClosingConfirmation();
     
-    // Основная функция блокировки
-    function initPullToCloseBlock() {
-        if (!BLOCKING_ENABLED) return;
-        
-        // Стили для блокировки overscroll
-        const style = document.createElement('style');
-        style.textContent = `
-            body {
-                overscroll-behavior-y: none !important;
-                -webkit-overflow-scrolling: auto !important;
-            }
-            
-            /* Разрешаем скролл только внутри контента */
-            .scrollable, [class*="scroll"], [class*="list"], [class*="content"] {
-                overscroll-behavior-y: contain !important;
-                -webkit-overflow-scrolling: touch !important;
-            }
-        `;
-        document.head.appendChild(style);
-        
-        // Обработчики touch событий
-        document.addEventListener('touchstart', handleTouchStart, { passive: true });
-        document.addEventListener('touchmove', handleTouchMove, { passive: false });
-        document.addEventListener('touchend', handleTouchEnd, { passive: true });
-        
-        // Дополнительная защита для iOS
-        if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
-            document.addEventListener('touchmove', function(e) {
-                if (isInTouchArea && e.scale !== 1) {
-                    e.preventDefault();
-                }
-            }, { passive: false });
+    // 2. Принудительно расширяем на весь экран
+    Telegram.WebApp.expand();
+    
+    // 3. Жесткая блокировка через CSS и JavaScript
+    const style = document.createElement('style');
+    style.textContent = `
+        body {
+            overflow: hidden !important;
+            position: fixed !important;
+            width: 100% !important;
+            height: 100% !important;
+            overscroll-behavior: none !important;
         }
         
-        // Блокируем жесты масштабирования
-        document.addEventListener('gesturestart', function(e) {
-            e.preventDefault();
-        });
-        
-        document.addEventListener('gesturechange', function(e) {
-            e.preventDefault();
-        });
-        
-        document.addEventListener('gestureend', function(e) {
-            e.preventDefault();
-        });
-        
-        // Используем Telegram API для полной блокировки
-        if (window.Telegram?.WebApp) {
-            Telegram.WebApp.disableClosingConfirmation();
-            Telegram.WebApp.expand();
-            
-            // Периодически обновляем на случай сбоев
-            setInterval(() => {
-                Telegram.WebApp.disableClosingConfirmation();
-                Telegram.WebApp.expand();
-            }, 3000);
+        /* Разрешаем скролл внутри контента */
+        .tg-content, .scrollable, [class*="scroll"] {
+            overflow: auto !important;
+            overscroll-behavior: contain !important;
+            height: 100% !important;
         }
-    }
+    `;
+    document.head.appendChild(style);
     
-    function handleTouchStart(e) {
-        touchStartY = e.touches[0].clientY;
-        isInTouchArea = touchStartY < TOUCH_AREA_HEIGHT;
-    }
+    // 4. Блокировка touch событий
+    let startY = 0;
+    let isBlocking = false;
     
-    function handleTouchMove(e) {
-        if (!isInTouchArea) return;
-        
-        const currentY = e.touches[0].clientY;
-        const deltaY = currentY - touchStartY;
-        
-        // Блокируем любой свайп вниз из верхней области
-        if (deltaY > 10 && e.cancelable) {
+    document.addEventListener('touchstart', function(e) {
+        startY = e.touches[0].clientY;
+        isBlocking = startY < 100; // Блокируем только из верхней части
+    }, { passive: true });
+    
+    document.addEventListener('touchmove', function(e) {
+        if (isBlocking && e.cancelable) {
             e.preventDefault();
             e.stopPropagation();
-            return false;
         }
-    }
+    }, { passive: false });
     
-    function handleTouchEnd() {
-        isInTouchArea = false;
-    }
+    document.addEventListener('touchend', function() {
+        isBlocking = false;
+    }, { passive: true });
     
-    // Инициализация при полной загрузке
-    if (document.readyState === 'loading') {
-        document.addEventListener('DOMContentLoaded', initPullToCloseBlock);
-    } else {
-        initPullToCloseBlock();
-    }
+    // 5. Периодическое обновление блокировки
+    setInterval(function() {
+        Telegram.WebApp.disableClosingConfirmation();
+        Telegram.WebApp.expand();
+    }, 2000);
     
-    // Дублируем инициализацию через timeout для надежности
-    setTimeout(initPullToCloseBlock, 1000);
-    setTimeout(initPullToCloseBlock, 3000);
+    // 6. Блокировка жестов масштабирования
+    document.addEventListener('gesturestart', function(e) {
+        e.preventDefault();
+    });
+    
+    document.addEventListener('gesturechange', function(e) {
+        e.preventDefault();
+    });
+    
+    document.addEventListener('gestureend', function(e) {
+        e.preventDefault();
+    });
     
 })();
 </script>
