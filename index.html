@@ -7810,133 +7810,150 @@ document.head.appendChild(swipeStyle);
 })();
 </script>
 
-  <script>
-// Переменная для отслеживания текущей страницы
-let currentPage = 'main-page';
-
-// Функция для блокировки свайпа вниз
-function blockPullToClose() {
-    // Добавляем стили, которые блокируют скролл и жесты
+<script>
+// Функция для полной блокировки свайпа вниз
+function blockPullToCloseEverywhere() {
+    // Добавляем стили, которые полностью блокируют скролл и жесты
     const style = document.createElement('style');
-    style.id = 'block-swipe-styles';
+    style.id = 'block-all-swipes';
     style.textContent = `
-        body.block-swipe {
+        body {
             overflow: hidden !important;
             position: fixed !important;
             width: 100% !important;
             height: 100% !important;
             top: 0 !important;
             left: 0 !important;
-        }
-        
-        body.block-swipe * {
             overscroll-behavior: none !important;
             -webkit-overflow-scrolling: auto !important;
         }
+        
+        /* Разрешаем скролл только внутри контейнеров с контентом */
+        .scrollable, 
+        [class*="scroll"],
+        [class*="list"],
+        [class*="content"] {
+            overflow: auto !important;
+            -webkit-overflow-scrolling: touch !important;
+            overscroll-behavior: contain !important;
+        }
+        
+        /* Для Telegram WebApp */
+        .tg-app {
+            overscroll-behavior: none !important;
+        }
     `;
+    
+    // Удаляем старые стили если есть
+    const oldStyle = document.getElementById('block-all-swipes');
+    if (oldStyle) oldStyle.remove();
+    
     document.head.appendChild(style);
     
-    // Блокируем жесты
-    document.body.classList.add('block-swipe');
-    
-    // Блокируем touch события
-    document.addEventListener('touchmove', preventSwipe, { passive: false });
+    // Жесткая блокировка всех touch событий которые могут закрыть приложение
+    document.addEventListener('touchstart', handleTouchStart, { passive: true });
+    document.addEventListener('touchmove', handleTouchMove, { passive: false });
+    document.addEventListener('touchend', handleTouchEnd, { passive: true });
 }
 
-// Функция для разблокировки свайпа
-function allowPullToClose() {
-    // Убираем стили
-    const style = document.getElementById('block-swipe-styles');
-    if (style) style.remove();
-    
-    // Разблокируем жесты
-    document.body.classList.remove('block-swipe');
-    
-    // Убираем обработчик
-    document.removeEventListener('touchmove', preventSwipe);
+// Переменные для отслеживания касаний
+let startY = 0;
+let isPotentialSwipe = false;
+
+function handleTouchStart(e) {
+    startY = e.touches[0].clientY;
+    isPotentialSwipe = startY < 100; // Касание в верхней части экрана
 }
 
-// Функция предотвращения свайпа
-function preventSwipe(e) {
-    if (currentPage !== 'main-page') {
+function handleTouchMove(e) {
+    if (!isPotentialSwipe) return;
+    
+    const currentY = e.touches[0].clientY;
+    const deltaY = currentY - startY;
+    
+    // Блокируем только свайпы вниз из верхней части экрана
+    if (deltaY > 50 && e.cancelable) {
         e.preventDefault();
+        e.stopPropagation();
     }
 }
 
-// Определяем текущую страницу
-function updateCurrentPage() {
-    const pages = {
-        'main-page': document.getElementById('main-page'),
-        'cabinet-page': document.getElementById('cabinet-page'),
-        'treasure-page': document.getElementById('treasure-page'),
-        'storage-page': document.getElementById('storage-page'),
-        'payment-page': document.getElementById('payment-page'),
-        'expenses-page': document.getElementById('expenses-page'),
-        'profile-page': document.getElementById('profile-page'),
-        'reviews-page': document.getElementById('reviews-page')
-    };
-    
-    for (const [pageId, pageElement] of Object.entries(pages)) {
-        if (pageElement && pageElement.style.display !== 'none') {
-            currentPage = pageId;
-            break;
-        }
-    }
-    
-    // Управляем блокировкой
-    if (currentPage === 'main-page') {
-        allowPullToClose();
-    } else {
-        blockPullToClose();
-    }
+function handleTouchEnd() {
+    isPotentialSwipe = false;
 }
 
-// Инициализация
+// Инициализация блокировки
 document.addEventListener('DOMContentLoaded', function() {
-    // Наблюдаем за изменениями страниц
-    const observer = new MutationObserver(updateCurrentPage);
-    
-    const allPages = [
-        'main-page', 'cabinet-page', 'treasure-page', 'storage-page',
-        'payment-page', 'expenses-page', 'profile-page', 'reviews-page'
-    ];
-    
-    // Наблюдаем за всеми страницами
-    allPages.forEach(pageId => {
-        const page = document.getElementById(pageId);
-        if (page) {
-            observer.observe(page, { 
-                attributes: true, 
-                attributeFilter: ['style'] 
-            });
-        }
-    });
-    
-    // Перехватываем функцию showPage
-    const originalShowPage = window.showPage;
-    if (originalShowPage) {
-        window.showPage = function(pageElement) {
-            originalShowPage.apply(this, arguments);
-            setTimeout(updateCurrentPage, 50);
-        };
-    }
-    
-    // Первоначальное определение страницы
-    updateCurrentPage();
+    // Даем время на загрузку всего контента
+    setTimeout(() => {
+        blockPullToCloseEverywhere();
+        
+        // Периодически проверяем и восстанавливаем блокировку
+        setInterval(blockPullToCloseEverywhere, 1000);
+    }, 1000);
 });
 
-// Также обновляем при ручной навигации
+// Также обновляем блокировку при изменении страниц
+const originalShowPage = window.showPage;
+if (originalShowPage) {
+    window.showPage = function(pageElement) {
+        const result = originalShowPage.apply(this, arguments);
+        setTimeout(blockPullToCloseEverywhere, 100);
+        return result;
+    };
+}
+
+// Обновляем при ручной навигации
 const navFunctions = ['hidePaymentPage', 'hideExpensesPage', 'hideProfilePage', 'hideReviewsPage'];
 navFunctions.forEach(funcName => {
     if (window[funcName]) {
         const originalFunc = window[funcName];
         window[funcName] = function() {
             const result = originalFunc.apply(this, arguments);
-            setTimeout(updateCurrentPage, 50);
+            setTimeout(blockPullToCloseEverywhere, 100);
             return result;
         };
     }
 });
+
+// Блокируем жесты масштабирования
+document.addEventListener('gesturestart', function(e) {
+    e.preventDefault();
+});
+
+document.addEventListener('gesturechange', function(e) {
+    e.preventDefault();
+});
+
+document.addEventListener('gestureend', function(e) {
+    e.preventDefault();
+});
+
+// Дополнительная защита для iOS
+if (/iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+    document.addEventListener('touchmove', function(e) {
+        if (e.scale !== 1) {
+            e.preventDefault();
+        }
+    }, { passive: false });
+}
+
+// Запрещаем контекстное меню (дополнительная защита)
+document.addEventListener('contextmenu', function(e) {
+    e.preventDefault();
+});
+
+// Используем Telegram API для дополнительной блокировки
+if (window.Telegram?.WebApp) {
+    Telegram.WebApp.disableClosingConfirmation();
+    Telegram.WebApp.expand();
+    
+    // Периодически обновляем состояние
+    setInterval(() => {
+        Telegram.WebApp.disableClosingConfirmation();
+        Telegram.WebApp.expand();
+    }, 2000);
+}
 </script>
   
 </body>
